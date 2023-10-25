@@ -441,200 +441,202 @@ try {
             $ws = new HostProvider();
             $ws->login($ispconfig_api['user'], $ispconfig_api['password']);
             foreach ($sites as $domain => $v) {
-                $client_username = str_replace('@', '.', $v['email']);
-                $webroot = isset($v['webroot']) ? $v['webroot'] : 'web';
-                $domain_array = explode('.', $domain);
-                $dbname = isset($v['dbname']) ? $v['dbname'] : implode('_', array_reverse($domain_array));
-                $dbuser = isset($v['dbuser']) ? $v['dbuser'] : substr("dbu{$domain_array[0]}", 0, 16); # substr(implode('_', $domain_array), 0, 16);
-                $dbpass = isset($v['dbpass']) && $v['dbpass'] != '' ? $v['dbpass'] : 'Ch@ng3m3!';
-                $dbhost = isset($v['dbhost']) ? $v['dbhost'] : 'localhost';
-                $intento = 0;
-                $isp_client_id = null;
-                while ($intento < 3 && $isp_client_id == null) {
-                    $intento++;
-                    try {
-                        $isp_client_id = $ws->isp_client($client_username, $v['company_name'], $v['email']);
-                    } catch (\Error $sf) {
-                        echo $sf->getMessage();
-                    }
-                }
-                $intento = 0;
-                $isp_domain_id = null;
-                while ($intento < 3 && $isp_domain_id == null) {
-                    $intento++;
-                    try {
-                        $isp_domain_id = $ws->isp_domain($isp_client_id, $domain);
-                        $root = "/var/www/clients/client{$isp_client_id}/web{$isp_domain_id}";
-                        make_webdir($domain, $root);
-                        create_cert($domain, "$root/ssl", $ws->country, '', '', $v['company_name']);
-                        if (isset($v['type'])) {
-                            switch ($v['type']) {
-                                case 'Joomla':
-                                    // Revisamos si existe una configuración Joomla! para DevCenter (extensión .devcenter) y si la hay, sobreescribimos la que haya en web
-                                    $origen = $root.'/configuration.php.devcenter';
-                                    if (file_exists($origen)) {
-                                        $destino = $root."/{$webroot}/configuration.php";
-                                        chmod($origen, 0755);
-                                        chmod($destino, 0755);
-                                        if (file_exists($origen)) {
-                                            echo "\tConfiguración____| Joomla! ($origen)\n";
-                                            $cadena = file_get_contents($origen);
-                                            $patron = '~(.+)(\$db = )(.+);~';
-                                            $sustitucion = '$1$2\''.$dbname.'\';';
-                                            $patron = '~(.+)(\$host = )(.+);~';
-                                            $sustitucion = '$1$2\''.$dbhost.'\';';
-                                            $cadena = preg_replace($patron, $sustitucion, $cadena);
-                                            $patron = '~(.+)(\$user = )(.+);~';
-                                            $sustitucion = '$1$2\''.$dbuser.'\';';
-                                            $cadena = preg_replace($patron, $sustitucion, $cadena);
-                                            $patron = '~(.+)(\$password = )(.+);~';
-                                            $sustitucion = '$1$2\''.$dbpass.'\';';
-                                            $cadena = preg_replace($patron, $sustitucion, $cadena);
-                                            $patron = '~(.+)(\$log_path = )(.+);~';
-                                            $sustitucion = '$1$2\''.$root."/{$webroot}/log/';";
-                                            $cadena = preg_replace($patron, $sustitucion, $cadena);
-                                            $patron = '~(.+)(\$tmp_path = )(.+);~';
-                                            $sustitucion = '$1$2\''.$root."/{$webroot}/tmp/';";
-                                            $cadena = preg_replace($patron, $sustitucion, $cadena);
-                                            file_put_contents($origen, $cadena);
-                                            @copy($origen, $destino);
-                                        }
-                                    }
-                                    break;
-                                case 'Drupal':
-                                    // Revisamos si existe una configuración Drupal para DevCenter (extensión .devcenter) y si la hay, sobreescribimos la que haya en web
-                                    $origen = $root.'/settings.php.devcenter';
-                                    if (file_exists($origen)) {
-                                        $destino = $root."/{$webroot}/sites/default/settings.php";
-                                        chmod($origen, 0755);
-                                        chmod($destino, 0755);
-                                        if (file_exists($origen)) {
-                                            echo "\tConfiguración____| Drupal ($origen)\n";
-                                            $cadena = file_get_contents($origen);
-                                            $patron = '~(.+)(\'database\' => \').+(\',)~';
-                                            $sustitucion = '$1$2'.$dbname.'$3';
-                                            $cadena = preg_replace($patron, $sustitucion, $cadena);
-                                            $patron = '~(.+)(\'username\' => \').+(\',)~';
-                                            $sustitucion = '$1$2'.$dbuser.'$3';
-                                            $cadena = preg_replace($patron, $sustitucion, $cadena);
-                                            $patron = '~(.+)(\'password\' => \').+(\',)~';
-                                            $sustitucion = '$1$2'.$dbpass.'$3';
-                                            $cadena = preg_replace($patron, $sustitucion, $cadena);
-                                            $patron = '~(.+)(\'host\' => \').+(\',)~';
-                                            $sustitucion = '$1$2localhost$3';
-                                            $cadena = preg_replace($patron, $sustitucion, $cadena);
-                                            file_put_contents($origen, $cadena);
-                                            @copy($origen, $destino);
-                                        }
-                                    }
-                                    break;
-                                case 'Moodle':
-                                    break;
-                                case 'Prestashop':
-                                    // Revisamos si existe una configuración Drupal para DevCenter (extensión .devcenter) y si la hay, sobreescribimos la que haya en web
-                                    $origen = $root.'/parameters.php.devcenter';
-                                    if (file_exists($origen)) {
-                                        $destino = $root."/{$webroot}/app/config/parameters.php";
-                                        chmod($origen, 0755);
-                                        if (file_exists($origen)) {
-                                            echo "\tConfiguración____| PrestaShop ($origen)\n";
-                                            $cadena = file_get_contents($origen);
-                                            $patron = '~(.+)(\'database_host\' => \').+(\',)~';
-                                            $sustitucion = '$1$2'.$dbhost.'$3';
-                                            $cadena = preg_replace($patron, $sustitucion, $cadena);
-                                            $patron = '~(.+)(\'databse_user\' => \').+(\',)~';
-                                            $sustitucion = '$1$2'.$dbuser.'$3';
-                                            $cadena = preg_replace($patron, $sustitucion, $cadena);
-                                            $patron = '~(.+)(\'database_name\' => \').+(\',)~';
-                                            $sustitucion = '$1$2'.$dbname.'$3';
-                                            $cadena = preg_replace($patron, $sustitucion, $cadena);
-                                            $patron = '~(.+)(\'database_password\' => \').+(\',)~';
-                                            $sustitucion = '$1$2'.$dbpass.'$3';
-                                            $cadena = preg_replace($patron, $sustitucion, $cadena);
-                                            file_put_contents($origen, $cadena);
-                                            copy($origen, $destino);
-                                            if (file_exists($destino)) {
-                                                chmod($destino, 0755);
-                                            } else {
-                                                echo "\tEl archivo no existe: $destino";
-                                            }
-                                        }
-                                    }
-                                    break;
-                                case 'WordPress':
-                                    // Revisamos si existe una configuración WordPress para DevCenter (extensión .devcenter) y si la hay, sobreescribimos la que haya en web
-                                    $origen = $root.'/wp-config.php.devcenter';
-                                    if (file_exists($origen)) {
-                                        $destino = $root."/{$webroot}/wp-config.php";
-                                        chmod($origen, 0755);
-                                        if (file_exists($origen)) {
-                                            echo "\tConfiguración____| WordPress ($origen)\n";
-                                            $cadena = file_get_contents($origen);
-                                            $patron = '~(define\(\'DB_NAME\', \').+(\'\);)~';
-                                            $sustitucion = '$1'.$dbname.'$2';
-                                            $cadena = preg_replace($patron, $sustitucion, $cadena);
-                                            $patron = '~(define\(\'DB_USER\', \').+(\'\);)~';
-                                            $sustitucion = '$1'.$dbuser.'$2';
-                                            $cadena = preg_replace($patron, $sustitucion, $cadena);
-                                            $patron = '~(define\(\'DB_PASSWORD\', \').+(\'\);)~';
-                                            $sustitucion = '$1'.$dbpass.'$2';
-                                            $cadena = preg_replace($patron, $sustitucion, $cadena);
-                                            $patron = '~(define\(\'DB_HOST\', \').+(\'\);)~';
-                                            $sustitucion = '$1'.$dbhost.'$2';
-                                            $cadena = preg_replace($patron, $sustitucion, $cadena);
-                                            file_put_contents($origen, $cadena);
-                                            copy($origen, $destino);
-                                            if (file_exists($destino)) {
-                                                chmod($destino, 0755);
-                                            } else {
-                                                echo "\tEl archivo no existe: $destino";
-                                            }
-                                        }
-                                    }
-                                    break;
-                                default:
-                                    // code...
-                                    break;
-                            }
+                if (!isset($v['provision']) || (isset($v['provision']) && $v['provision'] == true)) {
+                    $client_username = str_replace('@', '.', $v['email']);
+                    $webroot = isset($v['webroot']) ? $v['webroot'] : 'web';
+                    $domain_array = explode('.', $domain);
+                    $dbname = isset($v['dbname']) ? $v['dbname'] : implode('_', array_reverse($domain_array));
+                    $dbuser = isset($v['dbuser']) ? $v['dbuser'] : substr("dbu{$domain_array[0]}", 0, 16); # substr(implode('_', $domain_array), 0, 16);
+                    $dbpass = isset($v['dbpass']) && $v['dbpass'] != '' ? $v['dbpass'] : 'Ch@ng3m3!';
+                    $dbhost = isset($v['dbhost']) ? $v['dbhost'] : 'localhost';
+                    $intento = 0;
+                    $isp_client_id = null;
+                    while ($intento < 3 && $isp_client_id == null) {
+                        $intento++;
+                        try {
+                            $isp_client_id = $ws->isp_client($client_username, $v['company_name'], $v['email']);
+                        } catch (\Error $sf) {
+                            echo $sf->getMessage();
                         }
-                    } catch (\Error $sf) {
-                        echo "\t".$sf->getMessage()."\n";
                     }
-                }
-                $intento = 0;
-                $isp_database_id = null;
-                $sqls = glob($root.'/sql/*sql');
-                $cuantos = count($sqls);
-                $sqlfile = '';
-                if ($cuantos < 1) {
-                    echo "\t_________________| No hay base de datos para recuperar.\n";
-                } elseif ($cuantos == '1') {
-                    $sqlfile = $sqls[0];
-                    // echo "\tRecuperando SQL {$sqls[0]}.\n";
-                    // shell_exec("mysql $dbname < {$sqls[0]}");
-                    if ($sqlfile != "{$dbname}.sql") {
+                    $intento = 0;
+                    $isp_domain_id = null;
+                    while ($intento < 3 && $isp_domain_id == null) {
+                        $intento++;
+                        try {
+                            $isp_domain_id = $ws->isp_domain($isp_client_id, $domain);
+                            $root = "/var/www/clients/client{$isp_client_id}/web{$isp_domain_id}";
+                            make_webdir($domain, $root);
+                            create_cert($domain, "$root/ssl", $ws->country, '', '', $v['company_name']);
+                            if (isset($v['type'])) {
+                                switch ($v['type']) {
+                                    case 'Joomla':
+                                        // Revisamos si existe una configuración Joomla! para DevCenter (extensión .devcenter) y si la hay, sobreescribimos la que haya en web
+                                        $origen = $root.'/configuration.php.devcenter';
+                                        if (file_exists($origen)) {
+                                            $destino = $root."/{$webroot}/configuration.php";
+                                            chmod($origen, 0755);
+                                            chmod($destino, 0755);
+                                            if (file_exists($origen)) {
+                                                echo "\tConfiguración____| Joomla! ($origen)\n";
+                                                $cadena = file_get_contents($origen);
+                                                $patron = '~(.+)(\$db = )(.+);~';
+                                                $sustitucion = '$1$2\''.$dbname.'\';';
+                                                $patron = '~(.+)(\$host = )(.+);~';
+                                                $sustitucion = '$1$2\''.$dbhost.'\';';
+                                                $cadena = preg_replace($patron, $sustitucion, $cadena);
+                                                $patron = '~(.+)(\$user = )(.+);~';
+                                                $sustitucion = '$1$2\''.$dbuser.'\';';
+                                                $cadena = preg_replace($patron, $sustitucion, $cadena);
+                                                $patron = '~(.+)(\$password = )(.+);~';
+                                                $sustitucion = '$1$2\''.$dbpass.'\';';
+                                                $cadena = preg_replace($patron, $sustitucion, $cadena);
+                                                $patron = '~(.+)(\$log_path = )(.+);~';
+                                                $sustitucion = '$1$2\''.$root."/{$webroot}/log/';";
+                                                $cadena = preg_replace($patron, $sustitucion, $cadena);
+                                                $patron = '~(.+)(\$tmp_path = )(.+);~';
+                                                $sustitucion = '$1$2\''.$root."/{$webroot}/tmp/';";
+                                                $cadena = preg_replace($patron, $sustitucion, $cadena);
+                                                file_put_contents($origen, $cadena);
+                                                @copy($origen, $destino);
+                                            }
+                                        }
+                                        break;
+                                    case 'Drupal':
+                                        // Revisamos si existe una configuración Drupal para DevCenter (extensión .devcenter) y si la hay, sobreescribimos la que haya en web
+                                        $origen = $root.'/settings.php.devcenter';
+                                        if (file_exists($origen)) {
+                                            $destino = $root."/{$webroot}/sites/default/settings.php";
+                                            chmod($origen, 0755);
+                                            chmod($destino, 0755);
+                                            if (file_exists($origen)) {
+                                                echo "\tConfiguración____| Drupal ($origen)\n";
+                                                $cadena = file_get_contents($origen);
+                                                $patron = '~(.+)(\'database\' => \').+(\',)~';
+                                                $sustitucion = '$1$2'.$dbname.'$3';
+                                                $cadena = preg_replace($patron, $sustitucion, $cadena);
+                                                $patron = '~(.+)(\'username\' => \').+(\',)~';
+                                                $sustitucion = '$1$2'.$dbuser.'$3';
+                                                $cadena = preg_replace($patron, $sustitucion, $cadena);
+                                                $patron = '~(.+)(\'password\' => \').+(\',)~';
+                                                $sustitucion = '$1$2'.$dbpass.'$3';
+                                                $cadena = preg_replace($patron, $sustitucion, $cadena);
+                                                $patron = '~(.+)(\'host\' => \').+(\',)~';
+                                                $sustitucion = '$1$2localhost$3';
+                                                $cadena = preg_replace($patron, $sustitucion, $cadena);
+                                                file_put_contents($origen, $cadena);
+                                                @copy($origen, $destino);
+                                            }
+                                        }
+                                        break;
+                                    case 'Moodle':
+                                        break;
+                                    case 'Prestashop':
+                                        // Revisamos si existe una configuración Drupal para DevCenter (extensión .devcenter) y si la hay, sobreescribimos la que haya en web
+                                        $origen = $root.'/parameters.php.devcenter';
+                                        if (file_exists($origen)) {
+                                            $destino = $root."/{$webroot}/app/config/parameters.php";
+                                            chmod($origen, 0755);
+                                            if (file_exists($origen)) {
+                                                echo "\tConfiguración____| PrestaShop ($origen)\n";
+                                                $cadena = file_get_contents($origen);
+                                                $patron = '~(.+)(\'database_host\' => \').+(\',)~';
+                                                $sustitucion = '$1$2'.$dbhost.'$3';
+                                                $cadena = preg_replace($patron, $sustitucion, $cadena);
+                                                $patron = '~(.+)(\'databse_user\' => \').+(\',)~';
+                                                $sustitucion = '$1$2'.$dbuser.'$3';
+                                                $cadena = preg_replace($patron, $sustitucion, $cadena);
+                                                $patron = '~(.+)(\'database_name\' => \').+(\',)~';
+                                                $sustitucion = '$1$2'.$dbname.'$3';
+                                                $cadena = preg_replace($patron, $sustitucion, $cadena);
+                                                $patron = '~(.+)(\'database_password\' => \').+(\',)~';
+                                                $sustitucion = '$1$2'.$dbpass.'$3';
+                                                $cadena = preg_replace($patron, $sustitucion, $cadena);
+                                                file_put_contents($origen, $cadena);
+                                                copy($origen, $destino);
+                                                if (file_exists($destino)) {
+                                                    chmod($destino, 0755);
+                                                } else {
+                                                    echo "\tEl archivo no existe: $destino";
+                                                }
+                                            }
+                                        }
+                                        break;
+                                    case 'WordPress':
+                                        // Revisamos si existe una configuración WordPress para DevCenter (extensión .devcenter) y si la hay, sobreescribimos la que haya en web
+                                        $origen = $root.'/wp-config.php.devcenter';
+                                        if (file_exists($origen)) {
+                                            $destino = $root."/{$webroot}/wp-config.php";
+                                            chmod($origen, 0755);
+                                            if (file_exists($origen)) {
+                                                echo "\tConfiguración____| WordPress ($origen)\n";
+                                                $cadena = file_get_contents($origen);
+                                                $patron = '~(define\(\'DB_NAME\', \').+(\'\);)~';
+                                                $sustitucion = '$1'.$dbname.'$2';
+                                                $cadena = preg_replace($patron, $sustitucion, $cadena);
+                                                $patron = '~(define\(\'DB_USER\', \').+(\'\);)~';
+                                                $sustitucion = '$1'.$dbuser.'$2';
+                                                $cadena = preg_replace($patron, $sustitucion, $cadena);
+                                                $patron = '~(define\(\'DB_PASSWORD\', \').+(\'\);)~';
+                                                $sustitucion = '$1'.$dbpass.'$2';
+                                                $cadena = preg_replace($patron, $sustitucion, $cadena);
+                                                $patron = '~(define\(\'DB_HOST\', \').+(\'\);)~';
+                                                $sustitucion = '$1'.$dbhost.'$2';
+                                                $cadena = preg_replace($patron, $sustitucion, $cadena);
+                                                file_put_contents($origen, $cadena);
+                                                copy($origen, $destino);
+                                                if (file_exists($destino)) {
+                                                    chmod($destino, 0755);
+                                                } else {
+                                                    echo "\tEl archivo no existe: $destino";
+                                                }
+                                            }
+                                        }
+                                        break;
+                                    default:
+                                        // code...
+                                        break;
+                                }
+                            }
+                        } catch (\Error $sf) {
+                            echo "\t".$sf->getMessage()."\n";
+                        }
                     }
-                } else {
-                    if (file_exists("$root/sql/$dbname.sql")) {
-                        // shell_exec("mysql $dbname < $root/sql/$dbname.sql");
-                        $sqlfile = "$root/sql/$dbname.sql";
+                    $intento = 0;
+                    $isp_database_id = null;
+                    $sqls = glob($root.'/sql/*sql');
+                    $cuantos = count($sqls);
+                    $sqlfile = '';
+                    if ($cuantos < 1) {
+                        echo "\t_________________| No hay base de datos para recuperar.\n";
+                    } elseif ($cuantos == '1') {
+                        $sqlfile = $sqls[0];
+                        // echo "\tRecuperando SQL {$sqls[0]}.\n";
+                        // shell_exec("mysql $dbname < {$sqls[0]}");
+                        if ($sqlfile != "{$dbname}.sql") {
+                        }
                     } else {
-                        echo "\t_________________| Hay ".$cuantos." ficheros SQL y no hay coincidencia con el nombre de la base de datos. No se recupera ninguno.\n";
+                        if (file_exists("$root/sql/$dbname.sql")) {
+                            // shell_exec("mysql $dbname < $root/sql/$dbname.sql");
+                            $sqlfile = "$root/sql/$dbname.sql";
+                        } else {
+                            echo "\t_________________| Hay ".$cuantos." ficheros SQL y no hay coincidencia con el nombre de la base de datos. No se recupera ninguno.\n";
+                        }
                     }
-                }
-                while ($intento < 3 and $isp_database_id == null) {
-                    $intento++;
-                    try {
-                        $isp_database_id = $ws->isp_database($isp_client_id, $isp_domain_id, $dbname, $dbuser, $dbpass, $sqlfile);
-                    } catch (\Error $sf) {
-                        echo "\t".$sf->getMessage()."\n";
+                    while ($intento < 3 and $isp_database_id == null) {
+                        $intento++;
+                        try {
+                            $isp_database_id = $ws->isp_database($isp_client_id, $isp_domain_id, $dbname, $dbuser, $dbpass, $sqlfile);
+                        } catch (\Error $sf) {
+                            echo "\t".$sf->getMessage()."\n";
+                        }
                     }
+                    echo "\tPunto de montaje_| /mnt/$domain\n";
+                    echo "\tDocumentRoot_____| $root\n";
+                    echo "\tBase de datos____| $dbname\n";
+                    echo "\tUsuario BD_______| $dbuser\n";
+                    echo "\tPassword_________| $dbpass\n";
                 }
-                echo "\tPunto de montaje_| /mnt/$domain\n";
-                echo "\tDocumentRoot_____| $root\n";
-                echo "\tBase de datos____| $dbname\n";
-                echo "\tUsuario BD_______| $dbuser\n";
-                echo "\tPassword_________| $dbpass\n";
             }
         }
     }
