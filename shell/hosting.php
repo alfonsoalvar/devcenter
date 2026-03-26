@@ -233,7 +233,7 @@ class HostProvider
                         'template_additional' => '',
                         'template_master' => '',
                         'username' => $client_username,
-                        'usertheme' => '',
+                        'usertheme' => 'default',
                         'vat_id' => '',
                         'web_php_options' => 'no,fast-cgi,php-fpm,mod',
                         'zip' => '',
